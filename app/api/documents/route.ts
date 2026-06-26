@@ -14,6 +14,7 @@ export async function GET() {
       filename: true,
       status: true,
       chunkCount: true,
+      error: true,
       createdAt: true,
     },
   });

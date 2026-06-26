@@ -13,6 +13,7 @@ interface Doc {
   filename: string;
   status: string;
   chunkCount: number;
+  error: string | null;
   createdAt: string;
 }
 
@@ -251,7 +252,10 @@ export default function Dashboard({ user }: { user: User }) {
                     <span className="truncate text-sm text-[var(--ds-text)]">{d.filename}</span>
                   </span>
                   <span
-                    className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${badge.className}`}
+                    title={d.status === "failed" && d.error ? d.error : undefined}
+                    className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${badge.className} ${
+                      d.status === "failed" ? "cursor-help" : ""
+                    }`}
                   >
                     <span className={`h-1.5 w-1.5 rounded-full bg-current ${live ? "pulse-dot" : ""}`} />
                     {badge.label}

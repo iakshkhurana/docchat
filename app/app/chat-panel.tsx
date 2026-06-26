@@ -13,6 +13,14 @@ function textOf(m: UIMessage): string {
     .join("");
 }
 
+function pagesOf(m: UIMessage): number[] {
+  const part = m.parts.find((p) => p.type === "data-sources") as
+    | { data?: { n: number; page: number }[] }
+    | undefined;
+  const pages = (part?.data ?? []).map((s) => s.page).filter((p) => p > 0);
+  return [...new Set(pages)].sort((a, b) => a - b);
+}
+
 export default function ChatPanel({
   documentId,
   documentName,
@@ -102,6 +110,24 @@ export default function ChatPanel({
                   <div className="overflow-hidden rounded-2xl rounded-tl-sm bg-[var(--ds-surface-2)] px-4 py-3 text-[var(--ds-text)]">
                     <Markdown>{text}</Markdown>
                     {isStreaming && <span className="stream-caret ml-0.5 text-blue-500">▋</span>}
+                    {!isStreaming &&
+                      (() => {
+                        const pages = pagesOf(m);
+                        if (!pages.length) return null;
+                        return (
+                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-[var(--ds-border)] pt-2.5">
+                            <span className="text-[11px] text-[var(--ds-faint)]">Sources</span>
+                            {pages.map((p) => (
+                              <span
+                                key={p}
+                                className="rounded-md bg-blue-500/15 px-1.5 py-0.5 text-[11px] font-medium text-blue-500"
+                              >
+                                p.{p}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
                   </div>
                 )}
               </div>
