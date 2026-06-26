@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { connection } from "@/lib/redis";
 import { retrieve } from "@/lib/retrieval";
+import { getCurrentUser } from "@/lib/auth";
 
 const ANSWER_TTL_SECONDS = 60 * 60; // 1h
 
@@ -24,6 +25,9 @@ function questionFromMessages(messages: UIMessage[]): string {
 }
 
 export async function POST(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json();
   const documentId: string | undefined = body.documentId;
 
@@ -35,6 +39,15 @@ export async function POST(req: Request) {
       : []);
 
   if (!documentId) return Response.json({ error: "documentId required" }, { status: 400 });
+
+  // ensure the document belongs to the current user
+  const doc = await prisma.document.findUnique({
+    where: { id: documentId },
+    select: { userId: true },
+  });
+  if (!doc || doc.userId !== user.id) {
+    return Response.json({ error: "Document not found" }, { status: 404 });
+  }
 
   const question = questionFromMessages(messages);
   if (!question) return Response.json({ error: "empty question" }, { status: 400 });
@@ -64,6 +77,7 @@ export async function POST(req: Request) {
   const system = `You answer questions about a specific document.
 Use ONLY the context below. If the answer isn't there, say you don't know.
 Cite sources inline like [#2] when you use a chunk.
+Format answers in Markdown. For math, use $...$ for inline and $$...$$ for display equations.
 
 Context:
 ${context || "(no relevant context found)"}`;

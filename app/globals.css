@@ -1,26 +1,214 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* class-based dark mode: toggling `.dark` on <html> flips the variables below */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Dashboard surface palette — LIGHT by default, overridden under .dark */
+:root {
+  --ds-bg: #f7f7f9;
+  --ds-surface: #ffffff;
+  --ds-surface-2: #f0f0f3;
+  --ds-hover: #f3f3f6;
+  --ds-border: #e6e6ea;
+  --ds-text: #18181b;
+  --ds-dim: #6b6b73;
+  --ds-faint: #9a9aa2;
+  --ds-scroll: #d4d4da;
 }
 
+.dark {
+  --ds-bg: #0b0b0e;
+  --ds-surface: #121217;
+  --ds-surface-2: #17171c;
+  --ds-hover: #15151a;
+  --ds-border: #1f1f26;
+  --ds-text: #d4d4d8;
+  --ds-dim: #8a8a93;
+  --ds-faint: #5f5f68;
+  --ds-scroll: #2a2a30;
+}
+
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Dark base so navigating into the (dark) app never flashes white.
+   Light pages render their own full-height background on top. */
+body {
+  background-color: var(--ds-bg);
+}
+
+/* ── Animations ── */
+@keyframes ds-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-in-up {
+  animation: ds-in-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ds-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade {
+  animation: ds-fade 0.4s ease-out both;
+}
+
+@keyframes ds-typing {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+.typing-dot {
+  animation: ds-typing 1.2s infinite ease-in-out;
+}
+
+@keyframes ds-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.stream-caret {
+  animation: ds-blink 1s step-end infinite;
+}
+
+@keyframes ds-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+.pulse-dot {
+  animation: ds-pulse-ring 1.6s infinite;
+}
+
+/* Thin themed scrollbars for the dashboard panels */
+.scroll-ds {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ds-scroll) transparent;
+}
+.scroll-ds::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-ds::-webkit-scrollbar-thumb {
+  background: var(--ds-scroll);
+  border-radius: 9999px;
+}
+
+/* Rendered markdown inside chat bubbles */
+.md {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  word-break: break-word;
+  max-width: 100%;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p {
+  margin: 0.5rem 0;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1rem 0 0.5rem;
+}
+.md h1 { font-size: 1.25rem; }
+.md h2 { font-size: 1.15rem; }
+.md h3 { font-size: 1.05rem; }
+.md ul,
+.md ol {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li { margin: 0.25rem 0; }
+.md strong { font-weight: 600; }
+.md a {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+.md code {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.85em;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+}
+.md pre {
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  overflow-x: auto;
+  margin: 0.6rem 0;
+}
+.md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+.md blockquote {
+  border-left: 3px solid var(--ds-border);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: var(--ds-dim);
+}
+.md table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.85em;
+}
+.md th,
+.md td {
+  border: 1px solid var(--ds-border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
+/* KaTeX display math: allow horizontal scroll on overflow */
+.md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
 }

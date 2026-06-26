@@ -14,6 +14,16 @@ const worker = new Worker<IngestJob>(
   async (job) => {
     const { documentId, filePath } = job.data;
 
+    // Skip jobs whose document was deleted before processing (stale queue entries).
+    const exists = await prisma.document.findUnique({
+      where: { id: documentId },
+      select: { id: true },
+    });
+    if (!exists) {
+      console.log(`↷ ${documentId}: document no longer exists, skipping`);
+      return;
+    }
+
     try {
       await prisma.document.update({
         where: { id: documentId },
@@ -50,10 +60,10 @@ const worker = new Worker<IngestJob>(
       console.log(`✅ ${documentId}: indexed ${chunks.length} chunks`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await prisma.document.update({
-        where: { id: documentId },
-        data: { status: "failed", error: message },
-      });
+      // Guard: the document may have been deleted mid-flight.
+      await prisma.document
+        .update({ where: { id: documentId }, data: { status: "failed", error: message } })
+        .catch(() => {});
       console.error(`❌ ${documentId}: ${message}`);
       throw err; // let BullMQ record the failure / retry
     }

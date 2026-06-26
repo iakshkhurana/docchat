@@ -1,21 +1,31 @@
 import "dotenv/config";
 import { prisma } from "../lib/db";
-import { getCollection } from "../lib/chroma";
+import { chroma } from "../lib/chroma";
 import { connection } from "../lib/redis";
 import { chunk } from "../lib/chunking";
+
+// Uses a throwaway Chroma collection so it never locks the real "docchat_chunks"
+// collection to a test dimension.
+const TMP_COLLECTION = "verify_tmp";
 
 async function main() {
   console.log("Phase 1 verify — Postgres, Chroma, Redis\n");
 
-  // 1. Postgres (Prisma) — write + read back a Document
+  // 1. Postgres (Prisma) — write + read back a User + Document
+  const user = await prisma.user.create({
+    data: { email: `verify-${Date.now()}@example.com`, passwordHash: "x" },
+  });
   const doc = await prisma.document.create({
-    data: { filename: "verify.pdf", status: "queued" },
+    data: { filename: "verify.pdf", status: "queued", userId: user.id },
   });
   const read = await prisma.document.findUniqueOrThrow({ where: { id: doc.id } });
   console.log(`✅ Postgres: wrote Document ${read.id} (status=${read.status})`);
 
-  // 2. Chroma — upsert a vector, then query it back
-  const collection = await getCollection();
+  // 2. Chroma — upsert a vector into a temp collection, then query it back
+  const collection = await chroma.getOrCreateCollection({
+    name: TMP_COLLECTION,
+    embeddingFunction: null,
+  });
   await collection.upsert({
     ids: [`verify-${doc.id}`],
     embeddings: [[0.1, 0.2, 0.3]],
@@ -35,8 +45,8 @@ async function main() {
   console.log(`✅ Chunking: 2000 chars → ${chunks.length} chunks (page ${chunks[0].page})`);
 
   // cleanup
-  await collection.delete({ ids: [`verify-${doc.id}`] });
-  await prisma.document.delete({ where: { id: doc.id } });
+  await chroma.deleteCollection({ name: TMP_COLLECTION });
+  await prisma.user.delete({ where: { id: user.id } }); // cascades the Document
   await connection.del("verify:ping");
   console.log("\n🧹 cleaned up. Phase 1 green.");
 }

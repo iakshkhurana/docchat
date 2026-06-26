@@ -6,14 +6,27 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  documents    Document[]
+}
+
 model Document {
   id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   filename   String
   status     String    @default("queued") // queued | processing | ready | failed
   chunkCount Int       @default(0)
   error      String?                       // failure reason when status="failed"
   createdAt  DateTime  @default(now())
   messages   Message[]
+
+  @@index([userId])
 }
 
 model Message {
