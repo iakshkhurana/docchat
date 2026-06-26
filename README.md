@@ -4,7 +4,7 @@
 
 ### Chat with your documents — answers grounded in *your* content, streamed in real time, with sources.
 
-DocChat is a production-style **RAG (Retrieval-Augmented Generation)** application. Upload a PDF, and ask questions about it in natural language. Answers come back token-by-token, cite the exact page they came from, and never wander outside your document.
+DocChat is a production-style **RAG (Retrieval-Augmented Generation)** application. Create an account, upload a PDF, and ask questions about it in natural language. Answers come back token-by-token, cite the exact page they came from, and never wander outside your document.
 
 `Next.js` · `Prisma + Postgres` · `ChromaDB` · `Redis + BullMQ` · `Vercel AI SDK` · `Docker`
 
@@ -14,13 +14,17 @@ DocChat is a production-style **RAG (Retrieval-Augmented Generation)** applicati
 
 ## ✨ Features
 
-- **📥 Drop-in ingestion** — upload a PDF and it's parsed, chunked, embedded, and indexed automatically in the background.
-- **⚡ Streaming answers** — responses stream token-by-token like a real chat, powered by the Vercel AI SDK.
-- **🎯 Grounded & cited** — every answer is built *only* from your document's content, with inline `[#n]` citations back to the source page. No hallucinated facts.
-- **🧠 Smart caching** — embeddings and answers are cached in Redis. Ask the same question twice and the second answer is instant and free.
-- **🔀 Async by design** — slow work (parsing, embedding) runs in a dedicated worker, so the app stays fast and uploads return immediately.
-- **🗑️ Consistent deletes** — removing a document fans out across Postgres, ChromaDB, and Redis so no stale data is ever served.
-- **🐳 Fully containerized** — five services, one `docker-compose up`. Reproducible locally and in production.
+- **🔐 Accounts** — email/password auth with httpOnly JWT sessions; every document is scoped to its owner.
+- **📥 Drop-in ingestion** — drag-and-drop a PDF and it's parsed, chunked, embedded, and indexed in the background.
+- **⚡ Streaming answers** — responses stream token-by-token, powered by the Vercel AI SDK.
+- **🎯 Grounded & cited** — answers are built *only* from your document, with inline `[#n]` citations and **source page chips** under each reply.
+- **🧮 Rich rendering** — Markdown + LaTeX math rendered properly (headings, lists, code, equations).
+- **🧠 Smart caching** — embeddings and answers cached in Redis; a repeat question is instant and free.
+- **🔀 Async by design** — slow work (parsing, embedding) runs in a dedicated worker, so uploads return immediately.
+- **🗑️ Consistent deletes** — removing a document fans out across Postgres, ChromaDB, and Redis.
+- **🌗 Light / dark** — theme toggle on the dashboard, polished animated UI.
+- **🛡️ Rate limited** — per-user request throttling on chat.
+- **🐳 Containerized + CI** — `docker compose up` for all services; GitHub Actions runs lint + build on every push.
 
 ---
 
@@ -41,7 +45,7 @@ DocChat is split into **two planes that never block each other**:
        write Document      push job to queue   1. answer cache?  → Redis
         (status=queued)          │             2. embed question → Redis
                    │             ▼             3. similarity search → Chroma
-              ┌─────────┐   ┌──────────┐       4. LLM → stream tokens
+              ┌─────────┐   ┌──────────┐       4. LLM → stream tokens + sources
               │POSTGRES │   │  REDIS   │       5. persist messages → Postgres
               │(Prisma) │   │queue+cache│
               └────▲────┘   └────┬─────┘
@@ -57,10 +61,10 @@ DocChat is split into **two planes that never block each other**:
                                  └──────────┘
 ```
 
-- **Write plane (ingestion)** — throughput-sensitive and slow, so it runs fully async through a queue and a worker.
-- **Read plane (chat)** — latency-sensitive, so it's a fast synchronous request that streams straight back to the browser.
+- **Write plane (ingestion)** — slow, so it runs fully async through a queue and a worker.
+- **Read plane (chat)** — latency-sensitive, so it's a fast request that streams straight back.
 
-See [`docs/architecture.md`](docs/architecture.md) for the full design and [`docs/plan.md`](docs/plan.md) for the build plan.
+See [`docs/architecture.md`](docs/architecture.md) for the full design and [`docs/plan.md`](docs/plan.md) for the build plan (per-phase notes in `docs/phase-*.md`).
 
 ---
 
@@ -74,8 +78,10 @@ See [`docs/architecture.md`](docs/architecture.md) for the full design and [`doc
 | Queue & cache | **Redis + BullMQ** | Async ingestion with retries; embedding & answer caches |
 | LLM streaming | **Vercel AI SDK** | Token streaming + `useChat` with minimal glue |
 | Embeddings | **OpenAI** `text-embedding-3-small` | Same model for chunks and questions |
+| Auth | **jose** (JWT) + **bcryptjs** | httpOnly session cookies, hashed passwords |
+| Rendering | **react-markdown** + **KaTeX** | Markdown + math in answers |
 | PDF parsing | **unpdf** | Lightweight, per-page text extraction |
-| Packaging | **Docker Compose** | All services reproducible in one command |
+| Packaging | **Docker Compose** + GitHub Actions | Reproducible services; CI on push |
 
 ---
 
@@ -86,9 +92,8 @@ See [`docs/architecture.md`](docs/architecture.md) for the full design and [`doc
 - Docker Desktop
 - An `OPENAI_API_KEY`
 
-### 1. Clone & install
+### 1. Install
 ```bash
-git clone <repo-url>
 cd docchat
 npm install
 ```
@@ -97,12 +102,12 @@ npm install
 ```bash
 cp .env.example .env
 ```
-Fill in `.env`:
 ```env
 DATABASE_URL="postgresql://docchat:docchat@localhost:5432/docchat"
 CHROMA_URL="http://localhost:8000"
 REDIS_URL="redis://localhost:6379"
 OPENAI_API_KEY="sk-..."
+AUTH_SECRET="a-long-random-string"   # node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 ### 3. Start infrastructure
@@ -115,15 +120,15 @@ docker compose up -d postgres chromadb redis
 npx prisma migrate dev
 ```
 
-### 5. Run the app + worker (two processes)
+### 5. Run the app + worker
 ```bash
-npm run dev        # Next.js app  → http://localhost:3000
-npm run worker     # ingestion worker (separate terminal)
+npm run dev        # starts BOTH the Next.js app and the ingestion worker
 ```
+> `npm run dev` runs the app **and** the worker together (via `concurrently`). Use `npm run dev:app` for the app only, or `npm run worker` to run the worker separately.
 
-Upload a PDF, wait for it to turn **ready**, and start chatting.
+Open **http://localhost:3000**, create an account, upload a PDF, watch it turn **Indexed**, and start chatting.
 
-> **In production**, everything runs as containers: `docker compose up` brings up the app, worker, and all three stores together.
+> **Production:** `docker compose up` brings up the app, worker, and all three stores as containers.
 
 ---
 
@@ -132,26 +137,26 @@ Upload a PDF, wait for it to turn **ready**, and start chatting.
 ```
 docchat/
 ├── docker-compose.yml          # app, worker, postgres, chromadb, redis
-├── prisma/
-│   └── schema.prisma           # Document, Message
+├── Dockerfile                  # one image; app & worker differ by entrypoint
+├── prisma/schema.prisma        # User, Document, Message
+├── prisma.config.ts            # Prisma 7 datasource config
 ├── app/
-│   ├── page.tsx                # document list + upload
-│   ├── chat/[id]/page.tsx      # streaming chat per document
+│   ├── page.tsx                # landing page
+│   ├── login/ · signup/        # auth pages
+│   ├── app/                    # dashboard (auth-guarded)
+│   │   ├── page.tsx            #   server guard → Dashboard
+│   │   ├── dashboard.tsx       #   upload + document list + status
+│   │   └── chat-panel.tsx      #   streaming chat + citations
 │   └── api/
-│       ├── upload/route.ts     # thin: save + enqueue, return 202
-│       ├── chat/route.ts       # cache → retrieve → LLM stream → persist
-│       └── documents/[id]/route.ts  # DELETE → fan out to all 3 stores
-├── worker/
-│   └── index.ts                # BullMQ consumer: parse→chunk→embed→chroma
-├── lib/
-│   ├── db.ts                   # Prisma client (singleton)
-│   ├── redis.ts                # ioredis connection
-│   ├── queue.ts                # BullMQ queue (producer)
-│   ├── chroma.ts               # Chroma client + collection
-│   ├── embeddings.ts           # cache-aware embed()
-│   ├── chunking.ts             # text → chunks (overlap)
-│   └── retrieval.ts            # Chroma similarity search
-└── docs/                       # architecture, build plan, per-phase notes
+│       ├── auth/{signup,login,logout}/route.ts
+│       ├── upload/route.ts     # thin: save + enqueue, 202
+│       ├── chat/route.ts       # cache → retrieve → LLM stream + sources → persist
+│       └── documents/route.ts · documents/[id]/route.ts   # list · DELETE (3-store fan-out)
+├── worker/index.ts             # BullMQ consumer: parse→chunk→embed→chroma
+├── lib/                        # db, redis, queue, chroma, embeddings, chunking, retrieval, auth
+├── components/                 # logo, icons, auth-form, theme-toggle, confirm-dialog, markdown
+├── .github/workflows/ci.yml    # lint + build on push
+└── docs/                       # architecture, plan, per-phase notes
 ```
 
 ---
@@ -164,6 +169,7 @@ docchat/
 | `CHROMA_URL` | `http://localhost:8000` | ChromaDB server |
 | `REDIS_URL` | `redis://localhost:6379` | Redis (queue + cache) |
 | `OPENAI_API_KEY` | `sk-...` | Embeddings + chat LLM |
+| `AUTH_SECRET` | `<32-byte hex>` | Session (JWT) signing secret |
 
 ---
 
@@ -173,9 +179,10 @@ docchat/
 - [x] **Data layer** — Prisma schema + typed clients for every store
 - [x] **Ingestion** — async upload → parse → chunk → embed → index
 - [x] **Retrieval & chat** — grounded, streamed answers with answer caching
-- [ ] **Frontend** — upload UI + live status + streaming chat view
-- [ ] **Polish** — source-citation rendering, document delete, rate limiting
-- [ ] **Ship** — CI (lint + build) and container deployment
+- [x] **Frontend** — landing, auth, dashboard with live status + streaming chat
+- [x] **Polish** — source citations, document delete, rate limiting, light/dark, error handling
+- [x] **Ship** — CI (lint + build) + containerized deploy
+- [ ] Hosted deployment + README screenshots
 
 ---
 
