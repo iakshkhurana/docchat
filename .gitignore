@@ -20,6 +20,9 @@
 # production
 /build
 
+# uploaded files (source of truth is Postgres + these; not committed)
+/uploads
+
 # misc
 .DS_Store
 *.pem
