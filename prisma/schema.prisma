@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Document {
+  id         String    @id @default(cuid())
+  filename   String
+  status     String    @default("queued") // queued | processing | ready | failed
+  chunkCount Int       @default(0)
+  error      String?                       // failure reason when status="failed"
+  createdAt  DateTime  @default(now())
+  messages   Message[]
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  role       String   // user | assistant
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+}
